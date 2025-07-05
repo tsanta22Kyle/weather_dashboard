@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS weather_fact (
     sun_hours FLOAT,
     uv_index FLOAT,
     weather_score FLOAT,
-    source TEXT  -- 'historical' ou 'realtime'
+    source TEXT , -- 'historical' ou 'realtime'
+    unique(date_id, city_id, source)
 );
 
 

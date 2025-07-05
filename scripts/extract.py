@@ -5,7 +5,7 @@ import calendar
 import numpy as np
 import logging
 
-def extract_realtime_data():
+def extract_forecast_week():
     cities = [
         {"q": "Bogota", "latitude": 4.7110, "longitude": -74.0721},
         {"q": "Antananarivo", "latitude": -18.8792, "longitude": 47.5079},
@@ -18,19 +18,17 @@ def extract_realtime_data():
         {"q": "Rio de Janeiro", "latitude": -22.9068, "longitude": -43.1729},
     ]
 
-    exec_date = datetime.today().strftime("%Y-%m-%d")
+    conn = pg.connect(
+        dbname="meteo_db",
+        user="airflow",
+        password="tsanta",
+        host="localhost",
+        port="5432"
+    )
+    cur = conn.cursor()
 
     for city in cities:
         try:
-            conn = pg.connect(
-                dbname="meteo_db",
-                user="airflow",
-                password="tsanta",
-                host="localhost",
-                port="5432"
-            )
-            cur = conn.cursor()
-
             name = city["q"]
             lat = city["latitude"]
             lon = city["longitude"]
@@ -40,56 +38,17 @@ def extract_realtime_data():
                 params={
                     "latitude": lat,
                     "longitude": lon,
-                    "daily": "sunshine_duration",
-                    "hourly": ["temperature_2m", "wind_speed_10m", "precipitation", "relative_humidity_2m"],
+                    "daily": "temperature_2m_max,precipitation_sum,sunshine_duration,wind_speed_10m_max,uv_index_max",
                     "timezone": "auto"
                 }
             )
             data = response.json()
 
-            sun_seconds = data.get("daily", {}).get("sunshine_duration", [0])[0] or 0
-            sun_hours = round(sun_seconds / 3600, 2)
-
-            temps = data.get("hourly", {}).get("temperature_2m", [])
-            winds = data.get("hourly", {}).get("wind_speed_10m", [])
-            humids = data.get("hourly", {}).get("relative_humidity_2m", [])
-            precips = data.get("hourly", {}).get("precipitation", [])
-
-            temp_max = max([t for t in temps if t is not None], default=0)
-            wind_avg = float(round(np.mean([w for w in winds if w is not None]) if winds else 0, 2))
-            humid_avg = float(round(np.mean([h for h in humids if h is not None]) if humids else 0, 2))
-            precip_sum = float(round(sum([p for p in precips if p is not None]) if precips else 0, 2))
-
-            # Score météo safe
-            score = 0
-            if 22 <= temp_max <= 28: score += 3
-            elif 18 <= temp_max < 22 or 28 < temp_max <= 32: score += 2
-            elif 15 <= temp_max < 18 or 32 < temp_max <= 35: score += 1
-            if precip_sum < 1: score += 2
-            elif precip_sum < 5: score += 1
-            if 40 <= humid_avg <= 70: score += 1
-            if wind_avg < 20: score += 1
-            if sun_hours > 4: score += 1
-
-            weather_score = score
-
-            full_date = datetime.strptime(exec_date, "%Y-%m-%d")
-            date_id = int(full_date.strftime("%Y%m%d"))
-            day = full_date.day
-            month = full_date.month
-            year = full_date.year
-            month_name = calendar.month_name[month]
-            season = (
-                "Spring" if month in [3, 4, 5]
-                else "Summer" if month in [6, 7, 8]
-                else "Autumn" if month in [9, 10, 11]
-                else "Winter"
-            )
-
+            # Récupérer ou créer city_id
             cur.execute("SELECT city_id FROM dim_city WHERE city_name = %s", (name,))
-            city_row = cur.fetchone()
-            if city_row:
-                city_id = city_row[0]
+            row = cur.fetchone()
+            if row:
+                city_id = row[0]
             else:
                 cur.execute("""
                     INSERT INTO dim_city (city_name, country, continent, latitude, longitude)
@@ -97,29 +56,80 @@ def extract_realtime_data():
                 """, (name, None, None, lat, lon))
                 city_id = cur.fetchone()[0]
 
-            cur.execute("""
-                INSERT INTO dim_date (date_id, full_date, day, month, month_name, year, season)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (date_id) DO NOTHING
-            """, (date_id, full_date, day, month, month_name, year, season))
+            # Récupérer les prévisions journalières
+            daily_times = data.get("daily", {}).get("time", [])
+            temps_max = data.get("daily", {}).get("temperature_2m_max", [])
+            precips = data.get("daily", {}).get("precipitation_sum", [])
+            suns = data.get("daily", {}).get("sunshine_duration", [])
+            winds = data.get("daily", {}).get("wind_speed_10m_max", [])
+            uvs = data.get("daily", {}).get("uv_index_max", [])
 
-            cur.execute("""
-                INSERT INTO weather_fact (
-                    date_id, city_id, temp_max, precipitation,
-                    wind_speed, humidity, sun_hours, 
-                    weather_score, source
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                date_id, city_id, temp_max, precip_sum,
-                wind_avg, humid_avg, sun_hours,
-                weather_score, "realtime"
-            ))
+            for i in range(len(daily_times)):
+                date_str = daily_times[i]
+                full_date = datetime.strptime(date_str, "%Y-%m-%d")
+                date_id = int(full_date.strftime("%Y%m%d"))
+                day = full_date.day
+                month = full_date.month
+                year = full_date.year
+                month_name = calendar.month_name[month]
+                season = (
+                    "Spring" if month in [3, 4, 5]
+                    else "Summer" if month in [6, 7, 8]
+                    else "Autumn" if month in [9, 10, 11]
+                    else "Winter"
+                )
+
+                temp = temps_max[i] or 0
+                precip = round(precips[i] or 0, 2)
+                sun_hours = round((suns[i] or 0) / 3600, 2)
+                wind = round(winds[i] or 0, 2)
+                uv = uvs[i] or None
+
+                # Calcul du score météo
+                score = 0
+                if 22 <= temp <= 28: score += 3
+                elif 18 <= temp < 22 or 28 < temp <= 32: score += 2
+                elif 15 <= temp < 18 or 32 < temp <= 35: score += 1
+                if precip < 1: score += 2
+                elif precip < 5: score += 1
+                if wind < 20: score += 1
+                if sun_hours > 4: score += 1
+
+                weather_score = score
+
+                # Upsert dim_date
+                cur.execute("""
+                    INSERT INTO dim_date (date_id, full_date, day, month, month_name, year, season)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (date_id) DO NOTHING
+                """, (date_id, full_date, day, month, month_name, year, season))
+
+                # Upsert weather_fact
+                cur.execute("""
+                    INSERT INTO weather_fact (
+                        date_id, city_id, temp_max, precipitation,
+                        wind_speed, humidity, sun_hours,
+                        weather_score, source
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (date_id, city_id, source)
+                    DO UPDATE SET
+                        temp_max = EXCLUDED.temp_max,
+                        precipitation = EXCLUDED.precipitation,
+                        wind_speed = EXCLUDED.wind_speed,
+                        sun_hours = EXCLUDED.sun_hours,
+                        weather_score = EXCLUDED.weather_score
+                """, (
+                    date_id, city_id, temp, precip,
+                    wind, None, sun_hours,
+                    weather_score, "forecast"
+                ))
 
             conn.commit()
-            logging.info(f"✅ Données météo insérées pour {name} ({exec_date})")
+            logging.info(f"✅ Prévisions insérées pour {name}")
 
         except Exception as e:
-            logging.error(f"❌ Erreur pour {name} ({exec_date}) : {e}")
-        finally:
-            if cur: cur.close()
-            if conn: conn.close()
+            logging.error(f"❌ Erreur pour {name} : {e}")
+            conn.rollback()
+
+    cur.close()
+    conn.close()

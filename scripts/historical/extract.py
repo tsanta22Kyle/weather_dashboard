@@ -35,8 +35,8 @@ def extract_historical_data():
         params = {
             "latitude": lat,
             "longitude": lon,
-            "start_date": "2024-06-01",
-            "end_date": "2025-07-03",
+            "start_date": "2024-01-01",
+            "end_date": "2025-07-04",
             "daily": "sunshine_duration",
             "hourly": [
                 "temperature_2m",
@@ -150,13 +150,13 @@ def extract_historical_data():
                 cur.execute("""
                     INSERT INTO weather_fact (
                         date_id, city_id, temp_max, precipitation,
-                        wind_speed, humidity, sun_hours, uv_index,
+                        wind_speed, humidity, sun_hours,
                         weather_score, source
                     )
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     date_id, city_id, temp_max, precip_sum,
-                    wind_avg, humid_avg, sun_hours, None,
+                    wind_avg, humid_avg, sun_hours,
                     weather_score, "historical"
                 ))
 

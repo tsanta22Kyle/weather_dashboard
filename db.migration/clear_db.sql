@@ -2,3 +2,5 @@
 DELETE FROM weather_fact;
 DELETE FROM dim_city;
 DELETE FROM dim_date;
+
+DELETE FROM city_weather_summary

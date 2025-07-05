@@ -1,7 +1,7 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime
-from weather_tourism.scripts.extract import extract_realtime_data
+from weather_tourism.scripts.extract import extract_forecast_week
 from weather_tourism.scripts.transform import transform_weather
 
 default_args = {
@@ -19,7 +19,7 @@ with DAG(
 
     extract_task = PythonOperator(
         task_id='extract',
-        python_callable=extract_realtime_data
+        python_callable=extract_forecast_week
     )
 
     transform_task = PythonOperator(

@@ -1,0 +1,10 @@
+[{"city_id":59,"city_name":"Bogota","country":null,"continent":null,"latitude":4.711,"longitude":-74.0721},
+{"city_id":60,"city_name":"Antananarivo","country":null,"continent":null,"latitude":-18.8792,"longitude":47.5079},
+{"city_id":61,"city_name":"Taipei","country":null,"continent":null,"latitude":25.033,"longitude":121.5654},
+{"city_id":62,"city_name":"Kiev","country":null,"continent":null,"latitude":50.4501,"longitude":30.5234},
+{"city_id":63,"city_name":"Paris","country":null,"continent":null,"latitude":48.8566,"longitude":2.3522},
+{"city_id":64,"city_name":"Munich","country":null,"continent":null,"latitude":48.1351,"longitude":11.582},
+{"city_id":65,"city_name":"Tokyo","country":null,"continent":null,"latitude":35.6895,"longitude":139.6917},
+{"city_id":66,"city_name":"Venise","country":null,"continent":null,"latitude":45.4408,"longitude":12.3155},
+{"city_id":67,"city_name":"Rio de Janeiro","country":null,"continent":null,"latitude":-22.9068,"longitude":-43.1729}
+]
